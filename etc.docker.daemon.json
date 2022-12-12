@@ -1,0 +1,10 @@
+{
+  "log-driver": "loki",
+  "log-opts": {
+    "loki-url": "http://localhost:3100/loki/api/v1/push",
+    "mode": "non-blocking",
+    "loki-batch-size": "400",
+    "max-buffer-size": "4m",
+    "loki-retries": "3"
+  }
+}

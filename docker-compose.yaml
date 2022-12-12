@@ -1,0 +1,103 @@
+version: "3.9"
+
+networks:
+  loki:
+
+services:
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    environment:
+      # postgresql://postgres:example@localhost/db
+      POSTGRES_USER: username
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    ports:
+      - "5432:5432"
+
+  rabbitmq:
+    image: rabbitmq:3.11.4-management
+    restart: unless-stopped
+    ports:
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+
+  otel-collector:
+    image: otel/opentelemetry-collector
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:Z
+    ports:
+      - "13133:13133"
+      - "4317:4317"
+    depends_on:
+      - jaeger-all-in-one
+
+  loki:
+    image: grafana/loki:2.6.1
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - /home/marko/Documents/projects/microservices/loki:/etc/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:2.6.1
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log
+      - /home/marko/Documents/projects/microservices/promtail:/etc/promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    user: "1000"
+    volumes:
+      - /home/marko/Documents/projects/microservices/grafana:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - loki
+
+  go-api:
+    build: ./go-api
+    ports:
+      - "4000:4000"
+
+  crud-classic-jvm:
+    image: quarkus/crud-classic-jvm
+    pull_policy: never
+    environment:
+      QUARKUS_DATASOURCE_JDBC_URL: "jdbc:otel:postgresql://postgres:5432/db"
+      QUARKUS_OPENTELEMETRY_TRACER_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  crud-classic-native:
+    image: quarkus/crud-classic
+    pull_policy: never
+    environment:
+      QUARKUS_APPLICATION_NAME: crud-classic-native
+      QUARKUS_DATASOURCE_JDBC_URL: "jdbc:otel:postgresql://postgres:5432/db"
+      QUARKUS_OPENTELEMETRY_TRACER_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "8090:8080"
+    depends_on:
+      - postgres
